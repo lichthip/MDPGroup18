@@ -3,9 +3,9 @@ package com.example.mdpgroup18.bluetooth
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.util.Log
-import android.widget.Toast
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,131 +15,108 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
 
+sealed class ConnectionStatus {
+    object Disconnected : ConnectionStatus()
+    data class Connecting(val deviceName: String) : ConnectionStatus()
+    data class Connected(val deviceName: String) : ConnectionStatus()
+    object Reconnecting : ConnectionStatus()
+}
+
 @SuppressLint("MissingPermission")
 class BluetoothManager(private val context: Context) {
 
     companion object {
         private const val TAG = "BluetoothManager"
         private val MY_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-        private const val RECONNECT_DELAY_MS = 3000L // try reconnect every 3 sec
+        private const val RECONNECT_DELAY_MS = 3000L
     }
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
 
-    /** Flow to track connected device */
-    private val _connectedDevice = MutableStateFlow<BluetoothDevice?>(null)
-    val connectedDevice = _connectedDevice.asStateFlow()
+    private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
+    val connectionStatus = _connectionStatus.asStateFlow()
 
-    /** Channel for strings */
     private val incomingMessages = Channel<String>(Channel.UNLIMITED)
     private val outgoingMessages = Channel<String>(Channel.UNLIMITED)
 
     private var connectJob: Job? = null
-    private var ioJob: Job? = null
-
     private var socketWrapper: BluetoothSocketWrapper? = null
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    init {
-        if (bluetoothAdapter == null) {
-            Toast.makeText(context, "Bluetooth not supported", Toast.LENGTH_LONG).show()
-        }
-    }
+    fun isSupported(): Boolean = bluetoothAdapter != null
 
-    fun getPairedDevices(): List<BluetoothDevice> {
-        return bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
-    }
+    fun getPairedDevices(): List<BluetoothDevice> = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
 
     fun connect(device: BluetoothDevice) {
-        disconnect() // cancel previous connections
-        _connectedDevice.value = device
-
-        connectJob = CoroutineScope(Dispatchers.IO).launch {
+        disconnect()
+        connectJob = scope.launch {
             while (isActive) {
                 try {
-                    Log.d(TAG, "Attempting connection to ${device.name}")
+                    val name = device.name ?: "Unknown"
+                    _connectionStatus.value = ConnectionStatus.Connecting(name)
+
                     val socket = device.createRfcommSocketToServiceRecord(MY_UUID)
                     bluetoothAdapter?.cancelDiscovery()
                     socket.connect()
 
                     socketWrapper = BluetoothSocketWrapper(socket)
-                    _connectedDevice.value = device
-                    Toast.makeText(context, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
+                    _connectionStatus.value = ConnectionStatus.Connected(name)
+
                     startIO(socketWrapper!!)
-                    break
-                } catch (e: IOException) {
-                    Log.e(TAG, "Connection failed, retrying in 3s", e)
-                    _connectedDevice.value = null
+                } catch (e: Exception) {
+                    Log.e(TAG, "Connection failed/lost: ${e.message}")
+                    _connectionStatus.value = ConnectionStatus.Reconnecting
+                    socketWrapper?.close()
                     delay(RECONNECT_DELAY_MS)
                 }
             }
         }
     }
 
-    fun send(message: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            outgoingMessages.send(message)
+    private suspend fun startIO(wrapper: BluetoothSocketWrapper) = coroutineScope {
+        val input = wrapper.input
+        val output = wrapper.output
+        val buffer = ByteArray(1024)
+
+        val readJob = launch {
+            while (isActive) {
+                try {
+                    val bytesRead = input.read(buffer)
+                    if (bytesRead > 0) {
+                        val message = String(buffer, 0, bytesRead)
+                        incomingMessages.send(message)
+                    }
+                } catch (e: IOException) { throw e }
+            }
         }
+
+        val writeJob = launch {
+            for (msg in outgoingMessages) {
+                try {
+                    output.write(msg.toByteArray())
+                    output.flush()
+                } catch (e: IOException) { throw e }
+            }
+        }
+        joinAll(readJob, writeJob)
+    }
+
+    fun send(message: String) {
+        scope.launch { outgoingMessages.send(message) }
     }
 
     fun receive(): Channel<String> = incomingMessages
 
     fun disconnect() {
         connectJob?.cancel()
-        ioJob?.cancel()
         socketWrapper?.close()
         socketWrapper = null
-        _connectedDevice.value = null
+        _connectionStatus.value = ConnectionStatus.Disconnected
     }
 
-    /** Start io loop with connected device */
-    private fun startIO(socketWrapper: BluetoothSocketWrapper) {
-        ioJob = CoroutineScope(Dispatchers.IO).launch {
-            val input = socketWrapper.input
-            val output = socketWrapper.output
-            val buffer = ByteArray(1024)
-
-            val readJob = launch {
-                while (isActive) {
-                    try {
-                        val bytesRead = input.read(buffer)
-                        if (bytesRead > 0) {
-                            val message = String(buffer, 0, bytesRead)
-                            incomingMessages.send(message)
-                        }
-                    } catch (e: IOException) {
-                        Log.e(TAG, "Disconnected from device", e)
-                        _connectedDevice.value = null
-                        connect(_connectedDevice.value!!) // auto-reconnect
-                        break
-                    }
-                }
-            }
-
-            val writeJob = launch {
-                for (msg in outgoingMessages) {
-                    try {
-                        output.write(msg.toByteArray())
-                    } catch (e: IOException) {
-                        Log.e(TAG, "Error sending message", e)
-                        _connectedDevice.value = null
-                        connect(_connectedDevice.value!!) // auto-reconnect
-                        break
-                    }
-                }
-            }
-
-            readJob.join()
-            writeJob.join()
-        }
-    }
-
-    /** Wrapper to handle io streams */
-    private class BluetoothSocketWrapper(socket: android.bluetooth.BluetoothSocket) {
+    private class BluetoothSocketWrapper(private val socket: BluetoothSocket) {
         val input: InputStream = socket.inputStream
         val output: OutputStream = socket.outputStream
-        private val socketRef = socket
-        fun close() {
-            try { socketRef.close() } catch (e: IOException) { e.printStackTrace() }
-        }
+        fun close() { try { socket.close() } catch (e: IOException) { } }
     }
 }
