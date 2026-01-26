@@ -32,7 +32,6 @@ class BluetoothManager(private val context: Context) {
     }
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     val connectionStatus = _connectionStatus.asStateFlow()
 
@@ -40,11 +39,10 @@ class BluetoothManager(private val context: Context) {
     private val outgoingMessages = Channel<String>(Channel.UNLIMITED)
 
     private var connectJob: Job? = null
-    private var socketWrapper: BluetoothSocketWrapper? = null
+    private var socket: BluetoothSocket? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun isSupported(): Boolean = bluetoothAdapter != null
-
     fun getPairedDevices(): List<BluetoothDevice> = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
 
     fun connect(device: BluetoothDevice) {
@@ -55,47 +53,45 @@ class BluetoothManager(private val context: Context) {
                     val name = device.name ?: "Unknown"
                     _connectionStatus.value = ConnectionStatus.Connecting(name)
 
-                    val socket = device.createRfcommSocketToServiceRecord(MY_UUID)
                     bluetoothAdapter?.cancelDiscovery()
-                    socket.connect()
+                    socket = device.createRfcommSocketToServiceRecord(MY_UUID)
+                    socket?.connect()
 
-                    socketWrapper = BluetoothSocketWrapper(socket)
                     _connectionStatus.value = ConnectionStatus.Connected(name)
-
-                    startIO(socketWrapper!!)
+                    startIO()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Connection failed/lost: ${e.message}")
                     _connectionStatus.value = ConnectionStatus.Reconnecting
-                    socketWrapper?.close()
+                    cleanupSocket()
                     delay(RECONNECT_DELAY_MS)
                 }
             }
         }
     }
 
-    private suspend fun startIO(wrapper: BluetoothSocketWrapper) = coroutineScope {
-        val input = wrapper.input
-        val output = wrapper.output
+    private suspend fun startIO() = coroutineScope {
+        val inputStream = socket?.inputStream ?: return@coroutineScope
+        val outputStream = socket?.outputStream ?: return@coroutineScope
         val buffer = ByteArray(1024)
 
         val readJob = launch {
             while (isActive) {
                 try {
-                    val bytesRead = input.read(buffer)
+                    val bytesRead = inputStream.read(buffer)
+                    if (bytesRead == -1) throw IOException("Disconnected")
                     if (bytesRead > 0) {
                         val message = String(buffer, 0, bytesRead)
                         incomingMessages.send(message)
                     }
-                } catch (e: IOException) { throw e }
+                } catch (e: Exception) { throw e }
             }
         }
 
         val writeJob = launch {
             for (msg in outgoingMessages) {
                 try {
-                    output.write(msg.toByteArray())
-                    output.flush()
-                } catch (e: IOException) { throw e }
+                    outputStream.write(msg.toByteArray())
+                    outputStream.flush()
+                } catch (e: Exception) { throw e }
             }
         }
         joinAll(readJob, writeJob)
@@ -107,16 +103,16 @@ class BluetoothManager(private val context: Context) {
 
     fun receive(): Channel<String> = incomingMessages
 
-    fun disconnect() {
-        connectJob?.cancel()
-        socketWrapper?.close()
-        socketWrapper = null
-        _connectionStatus.value = ConnectionStatus.Disconnected
+    private fun cleanupSocket() {
+        try {
+            socket?.close()
+        } catch (e: Exception) { }
+        socket = null
     }
 
-    private class BluetoothSocketWrapper(private val socket: BluetoothSocket) {
-        val input: InputStream = socket.inputStream
-        val output: OutputStream = socket.outputStream
-        fun close() { try { socket.close() } catch (e: IOException) { } }
+    fun disconnect() {
+        connectJob?.cancel()
+        cleanupSocket()
+        _connectionStatus.value = ConnectionStatus.Disconnected
     }
 }
