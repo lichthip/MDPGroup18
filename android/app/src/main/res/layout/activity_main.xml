@@ -3,28 +3,54 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="20dp"
-    android:gravity="center_horizontal">
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/statusTextView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Status: Disconnected"
-        android:textSize="20sp"
-        android:layout_marginBottom="30dp"/>
+        android:text="@string/status_disconnected"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"/>
 
     <Button
         android:id="@+id/connectButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Connect to Device"/>
+        android:text="@string/btn_connect"
+        android:layout_marginBottom="8dp"/>
 
     <Button
         android:id="@+id/testSendButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Send Test String"
-        android:layout_marginTop="10dp"/>
+        android:text="@string/btn_send_test"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/label_incoming"
+        android:textSize="14sp"
+        android:layout_marginBottom="4dp"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#F0F0F0"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/incomingMessagesTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text=""
+            android:textColor="#333333"
+            android:textSize="12sp" />
+    </ScrollView>
 
 </LinearLayout>
