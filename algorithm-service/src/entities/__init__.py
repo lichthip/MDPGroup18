@@ -1,5 +1,5 @@
-"""Entities module with arena objects."""
 
 from .entity import CellState, Obstacle, Grid
+from .robot import Robot
 
-__all__ = ["CellState", "Obstacle", "Grid"]
+__all__ = ["CellState", "Obstacle", "Grid", "Robot"]
