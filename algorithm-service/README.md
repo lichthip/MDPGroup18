@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-### Local Development
+### Local Dev
 
 ```bash
 # Create virtual environment
@@ -21,12 +21,19 @@ python main.py
 ```bash
 pip install -r requirements.txt
 python run.py
-# Open http://localhost:5000/docs for API documentation
+# Open http://localhost:5001/docs for API documentation
 ```
 
 ### Docker
 
 ```bash
 docker-compose up --build
-# Open http://localhost:5000/docs
+# Open http://localhost:5001/docs
 ```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| /health | GET | Health check |
+| /path | POST | Compute optimal path |
