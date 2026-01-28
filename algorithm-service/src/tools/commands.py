@@ -83,6 +83,7 @@ class CommandGenerator:
 
         # turn commands - tuned for 3-point turns due to hardware limitations
         elif motion == Motion.FORWARD_LEFT_TURN:
+            # return [f"T{self.turn_speed}|{-25}|{90}"]
             return [
                 f"T{30}|{-50}|{46}",
                 f"t{25}|{0}|{23}",
@@ -92,6 +93,7 @@ class CommandGenerator:
             ]
         
         elif motion == Motion.FORWARD_RIGHT_TURN:
+            # return [f"T{self.turn_speed}|{25}|{90}"]
             return [
                 f"T{30}|{50}|{46}",
                 f"t{25}|{0}|{20}",
@@ -100,6 +102,7 @@ class CommandGenerator:
             ]
         
         elif motion == Motion.REVERSE_LEFT_TURN:
+            # return [f"t{self.turn_speed}|{-25}|{90}"]
             return [
                 f"T{25}|{0}|{3}",
                 f"t{30}|{-50}|{46}",
@@ -109,6 +112,7 @@ class CommandGenerator:
             ]
         
         elif motion == Motion.REVERSE_RIGHT_TURN:
+            # return [f"t{self.turn_speed}|{25}|{90}"]
             return [
                 f"T{25}|{0}|{6}",
                 f"t{30}|{48}|{45.4}",
