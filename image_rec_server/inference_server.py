@@ -14,7 +14,7 @@ from datetime import datetime
 import torch
 
 # --- CONFIGURATION ---
-RTSP_URL = "rtsp://100.113.65.17:8554/cam?latency=0"
+RTSP_URL = "rtsp://192.168.18.18:8554/cam"
 
 # ID Map
 ID_MAP = {
@@ -98,9 +98,9 @@ def processing_thread():
     worker_model = get_model()
 
     # Optimization for OpenCV Latency
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 
-    cap = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
+    cap = cv2.VideoCapture(RTSP_URL)
 
     while stream_state.running:
         if not cap.isOpened():
@@ -110,10 +110,8 @@ def processing_thread():
             continue
 
         ret, frame = cap.read()
-        if not ret:
-            print("Frame drop/Disconnect. Reconnecting...")
-            cap.release()
-            time.sleep(0.1)
+        if not ret or frame is None or frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
+            print("Invalid frame received, skipping...")
             continue
 
         # --- LIVE INFERENCE ---
@@ -176,6 +174,24 @@ async def get_live_video():
     """Returns the MJPEG video stream."""
     return StreamingResponse(
         generate_mjpeg(), media_type="multipart/x-mixed-replace;boundary=frame"
+    )
+
+
+@app.get("/snapshot")
+async def get_snapshot():
+    """Returns a single JPEG frame from the live stream."""
+    with stream_state.lock:
+        if stream_state.frame is None:
+            raise HTTPException(status_code=503, detail="No frame available")
+        
+        # Encode frame to JPEG
+        (flag, encodedImage) = cv2.imencode(".jpg", stream_state.frame)
+        if not flag:
+            raise HTTPException(status_code=500, detail="Failed to encode frame")
+    
+    return StreamingResponse(
+        iter([bytes(encodedImage)]),
+        media_type="image/jpeg"
     )
 
 
@@ -308,4 +324,4 @@ async def stitch_images(files: List[UploadFile] = File(...)):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
