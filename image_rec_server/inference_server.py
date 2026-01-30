@@ -91,7 +91,7 @@ def map_detection(class_id_str: str, class_name: str) -> int:
     return -1
 
 
-def check_stream_available(url: str, max_attempts: int = 3, timeout: int = 5) -> bool:
+def check_stream_available(url: str, max_attempts: int = 3, timeout: int = 3) -> bool:
     """Check if RTSP stream is available."""
     print(f"Checking stream availability at {url}...")
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
