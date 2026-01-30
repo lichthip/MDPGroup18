@@ -75,7 +75,11 @@ def get_model():
     global model
     if model is None:
         print(f"Loading model from {MODEL_CONFIG['path']}...")
-        model = YOLO(MODEL_CONFIG["path"])
+        model = torch.hub.load('./models', 'custom', path=MODEL_CONFIG["path"], source='local', force_reload=True)
+
+        # Configure model settings
+        model.conf = 0.4  # Confidence threshold
+        model.iou = 0.45  # NMS IoU threshold
         model.to(device)
     return model
 
