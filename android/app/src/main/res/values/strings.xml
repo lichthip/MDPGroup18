@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">MDP Group 18</string>
+    <string name="status_disconnected">Status: Disconnected</string>
+    <string name="status_connecting">Status: Connecting to %1$s...</string>
+    <string name="status_connected">Status: Connected to %1$s</string>
+    <string name="status_reconnecting">Status: Connection lost. Reconnecting...</string>
+    <string name="btn_connect">Connect to Robot</string>
+    <string name="btn_send_test">Send Hello</string>
+    <string name="toast_no_paired_devices">No paired devices found.</string>
+    <string name="toast_bluetooth_unsupported">Bluetooth is not supported</string>
+    <string name="dialog_select_device">Select Robot Device</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="label_incoming">Incoming Messages:</string>
+    <string name="hint_message">Type a message...</string>
+</resources>
