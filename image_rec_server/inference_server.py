@@ -51,7 +51,7 @@ ID_MAP = {
     "40": 40,  # target
 }
 
-MODEL_CONFIG = {"conf": 0.3, "path": "models/best_JH.pt"}
+MODEL_CONFIG = {"conf": 0.3, "path": "models/best_yolov5m.pt"}
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 app = FastAPI()
