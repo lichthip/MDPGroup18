@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  algorithm-service:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount source for dev hot-reload
+      - ./src:/app/src
+      - ./api:/app/api
+    restart: unless-stopped

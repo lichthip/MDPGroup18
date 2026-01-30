@@ -53,3 +53,14 @@ dkms.conf
 
 # debug information files
 *.dwo
+android/.idea/.name
+android/.idea/AndroidProjectSystem.xml
+android/.idea/codeStyles/codeStyleConfig.xml
+android/.idea/codeStyles/Project.xml
+android/.idea/compiler.xml
+android/.idea/deploymentTargetSelector.xml
+android/.idea/gradle.xml
+android/.idea/migrations.xml
+android/.idea/misc.xml
+android/.idea/runConfigurations.xml
+android/.idea/vcs.xml
