@@ -11,13 +11,13 @@ To run the inference server locally using Docker, follow these steps:
 2. **Build the Docker image:**
 
    ```bash
-   docker build -t image_rec_server
+   docker buildx build -t img_reg_api .
    ```
 
 3. **Run the container:**
 
    ```bash
-   docker run -p 8000:8000 image_rec_server
+   docker run -p 8000:8000 img_reg_api
    ```
 
    The service is now running and listening on port 8000 on your local machine.
