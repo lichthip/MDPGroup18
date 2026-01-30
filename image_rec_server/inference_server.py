@@ -75,7 +75,7 @@ def get_model():
     global model
     if model is None:
         print(f"Loading model from {MODEL_CONFIG['path']}...")
-        model = torch.hub.load('./models', 'custom', path=MODEL_CONFIG["path"], source='local', force_reload=True)
+        model = torch.hub.load('ultralytics/yolov5', 'custom', path=MODEL_CONFIG["path"])
 
         # Configure model settings
         model.conf = 0.4  # Confidence threshold
