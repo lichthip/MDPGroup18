@@ -18,41 +18,6 @@ RTSP_URL = os.getenv("RTSP_URL", "rtsp://192.168.18.18:8554/cam")
 ENABLE_STREAM = os.getenv("ENABLE_STREAM", "auto").lower()  # "auto", "true", or "false"
 stream_available = False  # Will be set during startup
 
-# ID Map
-ID_MAP = {
-    0: '0_Bulls Eye',
-    1: '111',
-    2: '122',
-    3: '133',
-    4: '144',
-    5: '155',
-    6: '166',
-    7: '177',
-    8: '188',
-    9: '199',
-    10: '20_A',
-    11: '21_B',
-    12: '22_C',
-    13: '23_D',
-    14: '24_E',
-    15: '25_F',
-    16: '26_G',
-    17: '27_H',
-    18: '28_S',
-    19: '29_T',
-    20: '30_U',
-    21: '31_V',
-    22: '32_W',
-    23: '33_X',
-    24: '34_Y',
-    25: '35_Z',
-    26: '36_Up',
-    27: '37_Down',
-    28: '38_Right',
-    29: '39_Left',
-    30: '40_Stop'
-}
-
 MODEL_CONFIG = {"conf": 0.3, "path": "models/best_yolov8m.pt"}
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -82,16 +47,7 @@ def get_model():
     return model
 
 
-def map_detection(class_id_str: str, class_name: str) -> int:
-    """Helper to map detections to ID_MAP"""
-    if class_id_str in ID_MAP:
-        return ID_MAP[class_id_str]
-    if class_name in ID_MAP:
-        return ID_MAP[class_name]
-    return -1
-
-
-def check_stream_available(url: str, max_attempts: int = 3, timeout: int = 3) -> bool:
+def check_stream_available(url: str, max_attempts: int = 1, timeout: int = 0.03) -> bool:
     """Check if RTSP stream is available."""
     print(f"Checking stream availability at {url}...")
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
@@ -107,7 +63,7 @@ def check_stream_available(url: str, max_attempts: int = 3, timeout: int = 3) ->
                 ret, frame = cap.read()
                 cap.release()
                 if ret and frame is not None:
-                    print("✓ Stream is available!")
+                    print("Stream is available!")
                     return True
             time.sleep(0.5)
         
@@ -116,7 +72,7 @@ def check_stream_available(url: str, max_attempts: int = 3, timeout: int = 3) ->
             print("Stream not available, retrying...")
             time.sleep(1)
     
-    print("✗ Stream is not available. Disabling stream features.")
+    print("Stream is not available. Disabling stream features.")
     return False
 
 
@@ -171,11 +127,9 @@ def processing_thread():
             conf = float(box.conf[0])
             bbox = box.xyxy[0].tolist()
 
-            image_id = map_detection(str(cls_id), cls_name)
-
             current_detections.append(
                 {
-                    "image_id": image_id,
+                    "class_id": cls_id,
                     "class_name": cls_name,
                     "confidence": conf,
                     "bbox": bbox,
@@ -312,11 +266,10 @@ async def process_image(file: UploadFile = File(...)):
                 cls_name = result.names[cls_id]
                 conf = float(box.conf[0])
                 bbox = box.xyxy[0].tolist()
-                image_id = map_detection(str(cls_id), cls_name)
 
                 detections.append(
                     {
-                        "image_id": image_id,
+                        "class_id": cls_id,
                         "class_name": cls_name,
                         "confidence": conf,
                         "bbox": bbox,
