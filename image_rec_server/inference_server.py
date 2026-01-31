@@ -14,44 +14,11 @@ from datetime import datetime
 import torch
 
 # --- CONFIGURATION ---
-RTSP_URL = "rtsp://192.168.18.18:8554/cam"
+RTSP_URL = os.getenv("RTSP_URL", "rtsp://192.168.18.18:8554/cam")
+ENABLE_STREAM = os.getenv("ENABLE_STREAM", "auto").lower()  # "auto", "true", or "false"
+stream_available = False  # Will be set during startup
 
-# ID Map
-ID_MAP = {
-    "10": 10,  # Bullseye
-    "11": 11,  # 1
-    "12": 12,  # 2
-    "13": 13,  # 3
-    "14": 14,  # 4
-    "15": 15,  # 5
-    "16": 16,  # 6
-    "17": 17,  # 7
-    "18": 18,  # 8
-    "19": 19,  # 9
-    "20": 20,  # a
-    "21": 21,  # b
-    "22": 22,  # c
-    "23": 23,  # d
-    "24": 24,  # e
-    "25": 25,  # f
-    "26": 26,  # g
-    "27": 27,  # h
-    "28": 28,  # s
-    "29": 29,  # t
-    "30": 30,  # u
-    "31": 31,  # v
-    "32": 32,  # w
-    "33": 33,  # x
-    "34": 34,  # y
-    "35": 35,  # z
-    "36": 36,  # Up Arrow
-    "37": 37,  # Down Arrow
-    "38": 38,  # Right Arrow
-    "39": 39,  # Left Arrow
-    "40": 40,  # target
-}
-
-MODEL_CONFIG = {"conf": 0.3, "path": "models/best_yolov5m.pt"}
+MODEL_CONFIG = {"conf": 0.3, "path": "models/best_yolov8m.pt"}
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 app = FastAPI()
@@ -75,27 +42,44 @@ def get_model():
     global model
     if model is None:
         print(f"Loading model from {MODEL_CONFIG['path']}...")
-        model = torch.hub.load('./models', 'custom', path=MODEL_CONFIG["path"], source='local', force_reload=True)
-
-        # Configure model settings
-        model.conf = 0.4  # Confidence threshold
-        model.iou = 0.45  # NMS IoU threshold
+        model = YOLO(MODEL_CONFIG["path"])
         model.to(device)
     return model
 
 
-def map_detection(class_id_str: str, class_name: str) -> int:
-    """Helper to map detections to ID_MAP"""
-    if class_id_str in ID_MAP:
-        return ID_MAP[class_id_str]
-    if class_name in ID_MAP:
-        return ID_MAP[class_name]
-    return -1
+def check_stream_available(url: str, max_attempts: int = 1, timeout: int = 0.03) -> bool:
+    """Check if RTSP stream is available."""
+    print(f"Checking stream availability at {url}...")
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+    
+    for attempt in range(max_attempts):
+        print(f"Attempt {attempt + 1}/{max_attempts}...")
+        cap = cv2.VideoCapture(url)
+        
+        # Give it some time to connect
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None:
+                    print("Stream is available!")
+                    return True
+            time.sleep(0.5)
+        
+        cap.release()
+        if attempt < max_attempts - 1:
+            print("Stream not available, retrying...")
+            time.sleep(1)
+    
+    print("Stream is not available. Disabling stream features.")
+    return False
 
 
 # --- BACKGROUND WORKER (THE "PRODUCER") ---
 def processing_thread():
     """Continuously reads RTSP stream, runs YOLO, and updates global state."""
+    global stream_available
     print(f"Starting background worker. Connecting to {RTSP_URL}...")
 
     # Load model inside the thread or ensure global model is loaded
@@ -105,13 +89,23 @@ def processing_thread():
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 
     cap = cv2.VideoCapture(RTSP_URL)
+    connection_failures = 0
+    max_failures = 10  # After 10 failures (20 seconds), disable stream
 
     while stream_state.running:
         if not cap.isOpened():
-            print("Stream not found. Retrying in 2s...")
+            connection_failures += 1
+            if connection_failures >= max_failures:
+                print(f"Failed to connect after {max_failures} attempts. Disabling stream.")
+                stream_available = False
+                break
+            print(f"Stream not found. Retrying in 2s... (attempt {connection_failures}/{max_failures})")
             time.sleep(2)
             cap.open(RTSP_URL, cv2.CAP_FFMPEG)
             continue
+        
+        # Reset failure counter on successful connection
+        connection_failures = 0
 
         ret, frame = cap.read()
         if not ret or frame is None or frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
@@ -133,11 +127,9 @@ def processing_thread():
             conf = float(box.conf[0])
             bbox = box.xyxy[0].tolist()
 
-            image_id = map_detection(str(cls_id), cls_name)
-
             current_detections.append(
                 {
-                    "image_id": image_id,
+                    "class_id": cls_id,
                     "class_name": cls_name,
                     "confidence": conf,
                     "bbox": bbox,
@@ -155,9 +147,28 @@ def processing_thread():
 
 @app.on_event("startup")
 def startup_event():
-    # Start the processing thread when API launches
-    t = threading.Thread(target=processing_thread, daemon=True)
-    t.start()
+    global stream_available
+    
+    # Determine if we should enable streaming
+    if ENABLE_STREAM == "true":
+        # Force enable
+        stream_available = True
+        print("Stream forcibly enabled via ENABLE_STREAM=true")
+    elif ENABLE_STREAM == "false":
+        # Force disable
+        stream_available = False
+        print("Stream forcibly disabled via ENABLE_STREAM=false")
+    else:
+        # Auto-detect (default)
+        stream_available = check_stream_available(RTSP_URL)
+    
+    # Start the processing thread if stream is available
+    if stream_available:
+        print("Starting background processing thread...")
+        t = threading.Thread(target=processing_thread, daemon=True)
+        t.start()
+    else:
+        print("Stream disabled. Only file upload endpoints (/image, /stitch, /ping) will be available.")
 
 
 # --- NEW LIVE ENDPOINTS ---
@@ -166,6 +177,8 @@ def startup_event():
 @app.get("/live_data")
 async def get_live_data():
     """Returns the latest inference results as JSON."""
+    if not stream_available:
+        raise HTTPException(status_code=503, detail="Live stream is not available. Only file upload endpoints are enabled.")
     with stream_state.lock:
         return {
             "timestamp": datetime.now().isoformat(),
@@ -176,6 +189,8 @@ async def get_live_data():
 @app.get("/live_video")
 async def get_live_video():
     """Returns the MJPEG video stream."""
+    if not stream_available:
+        raise HTTPException(status_code=503, detail="Live stream is not available. Only file upload endpoints are enabled.")
     return StreamingResponse(
         generate_mjpeg(), media_type="multipart/x-mixed-replace;boundary=frame"
     )
@@ -184,6 +199,8 @@ async def get_live_video():
 @app.get("/snapshot")
 async def get_snapshot():
     """Returns a single JPEG frame from the live stream."""
+    if not stream_available:
+        raise HTTPException(status_code=503, detail="Live stream is not available. Only file upload endpoints are enabled.")
     with stream_state.lock:
         if stream_state.frame is None:
             raise HTTPException(status_code=503, detail="No frame available")
@@ -249,11 +266,10 @@ async def process_image(file: UploadFile = File(...)):
                 cls_name = result.names[cls_id]
                 conf = float(box.conf[0])
                 bbox = box.xyxy[0].tolist()
-                image_id = map_detection(str(cls_id), cls_name)
 
                 detections.append(
                     {
-                        "image_id": image_id,
+                        "class_id": cls_id,
                         "class_name": cls_name,
                         "confidence": conf,
                         "bbox": bbox,
