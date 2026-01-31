@@ -3,6 +3,7 @@ package com.example.mdpgroup18
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 
@@ -17,7 +18,7 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
     var robotY = 1
     var robotDirection = "N"
 
-    data class Obstacle(val id: Int, var x: Int, var y: Int, var label: String, var face: String = "NONE")
+    data class Obstacle(var id: Int, var x: Int, var y: Int, var face: String = "NONE", var target: String? = null)
     val obstacles = mutableListOf<Obstacle>()
     private var selectedObs: Obstacle? = null
 
@@ -28,6 +29,7 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
     private val robotPaint = Paint().apply { color = Color.RED; style = Paint.Style.FILL; alpha = 180 }
     private val headPaint = Paint().apply { color = Color.YELLOW; style = Paint.Style.FILL }
     private val textPaint = Paint().apply { color = Color.WHITE; textSize = 22f; textAlign = Paint.Align.CENTER }
+    private val targetPaint = Paint().apply { color = Color.GREEN; textSize = 30f; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
     private val facePaint = Paint().apply { color = Color.CYAN; strokeWidth = 8f }
 
     override fun onDraw(canvas: Canvas) {
@@ -59,7 +61,7 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
             val bottom = top + (cellSize * 2)
 
             canvas.drawRect(left, top, right, bottom, obsPaint)
-            canvas.drawText(obs.label, left + cellSize, top + cellSize + 10f, textPaint)
+            canvas.drawText(obs.target ?: obs.id.toString(), left + cellSize, top + cellSize + 10f, if (obs.target != null) targetPaint else textPaint)
 
             if (obs.face != "NONE") {
                 when(obs.face) {
@@ -96,9 +98,32 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
         canvas.drawCircle(hx, hy, cellSize * 0.4f, headPaint)
     }
 
+    // to handle double tapping
+    private val gestureDetector = GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                val direction = arrayOf("N", "E", "S", "W", "NONE")
+                val c = (e.x / cellSize).toInt()
+                val r = 19 - (e.y / cellSize).toInt()
+
+                val obs = obstacles.find { c in it.x..it.x + 1 && r in it.y..it.y + 1 }
+                if (obs != null) {
+                    val current = direction.indexOf(obs.face)
+                    obs.face = direction[(current+1)%5]
+                    return true
+                }
+                return false
+            }
+        }
+    )
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val c = (event.x / cellSize).toInt()
         val r = 19 - (event.y / cellSize).toInt()
+
+        // if double tap occurs
+        gestureDetector.onTouchEvent(event)
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -120,6 +145,9 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
                 selectedObs?.let {
                     if (event.x < 0 || event.x > width || event.y < 0 || event.y > height) {
                         obstacles.remove(it)
+                        obstacles.forEachIndexed { i,obs ->
+                            obs.id = i+1
+                        }
                         onCommandGenerated?.invoke("REMOVE,B${it.id}")
                     } else {
                         onCommandGenerated?.invoke("ADD,B${it.id},(${it.x},${it.y})")

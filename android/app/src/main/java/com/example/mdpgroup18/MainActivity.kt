@@ -61,7 +61,11 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             for (message in bluetoothManager.receive()) {
                 runOnUiThread {
-                    incomingMessagesTextView.append("Robot: $message\n")
+                    if (!checkIncomingMsg(message)) incomingMessagesTextView.append("Robot Log: $message\n")
+                    else {
+                        incomingMessagesTextView.append("Status Update: $message\n")
+                        robotStatusTextView.text = "Status: $message"
+                    }
                     parseProtocol(message)
                 }
             }
@@ -70,6 +74,23 @@ class MainActivity : AppCompatActivity() {
         setupControls()
         updateRobotDisplay() // Initial state
     }
+
+    private fun checkIncomingMsg(msg: String): Boolean {
+        val whitelist = arrayOf(
+            Regex("^ready to start$"),
+            Regex("""^looking for target (\d+)$"""),
+            Regex("""^TARGET,(\d+),(\d+),[a-zA-Z]$"""),
+            Regex("""^ROBOT,(\d+),(\d+),[a-zA-Z]$"""),
+            Regex("^task complete$")
+        )
+
+        for (rule in whitelist) {
+            if (rule.matches(msg)) return true
+        }
+
+        return false
+    }
+
 
     private fun setupControls() {
         // Movement Buttons - Corrected Mapping (Point 3 Fix)
@@ -108,8 +129,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendMove(cmd: String) {
-        bluetoothManager.send(cmd)
-
         // Local simulation logic to make the Tablet UI responsive immediately
         var nx = gridMapView.robotX
         var ny = gridMapView.robotY
@@ -123,6 +142,11 @@ class MainActivity : AppCompatActivity() {
             "sl" -> when(nd) { "N"->nx--; "S"->nx++; "E"->ny++; "W"->ny-- }
             "sr" -> when(nd) { "N"->nx++; "S"->nx--; "E"->ny--; "W"->ny++ }
         }
+
+        if (nx in 1..18 && ny in 1..18) {
+            bluetoothManager.send(cmd)
+        }
+
         gridMapView.updateRobot(nx, ny, nd)
         updateRobotDisplay()
     }
@@ -155,7 +179,7 @@ class MainActivity : AppCompatActivity() {
             else if (clean.startsWith("TARGET", ignoreCase = true)) {
                 val p = clean.split(",")
                 gridMapView.obstacles.find { it.id == p[1].toInt() }?.apply {
-                    this.label = p[2]
+                    this.target = p[2]
                     this.face = p[3]
                 }
                 gridMapView.invalidate()
