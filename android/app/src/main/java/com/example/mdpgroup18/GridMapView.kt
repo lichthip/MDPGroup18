@@ -56,12 +56,16 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
         // 2. Draw Drag-and-Drop Obstacles (2x2)
         obstacles.forEach { obs ->
             val left = obs.x * cellSize
-            val top = (19 - (obs.y + 1)) * cellSize
-            val right = left + (cellSize * 2)
-            val bottom = top + (cellSize * 2)
+            val top = (19 - obs.y) * cellSize
+            val right = left + cellSize
+            val bottom = top + cellSize
 
+            val target = obs.target != null
+            val txt_paint = if (target) targetPaint else textPaint
+            val left_padding = if (target) -3f else 0f
+            val top_padding = if (target) 10f else 5f
             canvas.drawRect(left, top, right, bottom, obsPaint)
-            canvas.drawText(obs.target ?: obs.id.toString(), left + cellSize, top + cellSize + 10f, if (obs.target != null) targetPaint else textPaint)
+            canvas.drawText(obs.target ?: obs.id.toString(), left + cellSize/2 + left_padding, top + cellSize/2 + top_padding, txt_paint)
 
             if (obs.face != "NONE") {
                 when(obs.face) {
@@ -128,7 +132,7 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 selectedObs = obstacles.find { c in it.x..it.x+1 && r in it.y..it.y+1 }
-                if (selectedObs == null && c in 0..18 && r in 0..18) {
+                if (selectedObs == null && c in 0..19 && r in 0..19) {
                     val newObs = Obstacle(obstacles.size + 1, c, r, (obstacles.size + 1).toString())
                     obstacles.add(newObs)
                     selectedObs = newObs
@@ -136,8 +140,8 @@ class GridMapView(context: Context, attrs: AttributeSet) : View(context, attrs) 
             }
             MotionEvent.ACTION_MOVE -> {
                 selectedObs?.let {
-                    it.x = c.coerceIn(0, 18)
-                    it.y = r.coerceIn(0, 18)
+                    it.x = c.coerceIn(0, 19)
+                    it.y = r.coerceIn(0, 19)
                     invalidate()
                 }
             }
