@@ -64,3 +64,10 @@ android/.idea/migrations.xml
 android/.idea/misc.xml
 android/.idea/runConfigurations.xml
 android/.idea/vcs.xml
+
+# Pre-trained Models
+image_rec_train/*.pt
+
+# Training runs and datasets
+image_rec_train/runs/
+image_rec_train/datasets/
